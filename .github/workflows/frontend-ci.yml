@@ -1,0 +1,67 @@
+name: Frontend CI & Deploy Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "frontend-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  lint-and-validate:
+    name: Lint and Validate Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate JavaScript syntax
+        run: |
+          node --check capa3_frontend/script.js
+          echo "JavaScript syntax validation passed."
+
+      - name: Check required frontend files exist
+        run: |
+          test -f capa3_frontend/index.html || exit 1
+          test -f capa3_frontend/style.css || exit 1
+          test -f capa3_frontend/script.js || exit 1
+          test -f index.html || exit 1
+          echo "All required frontend files are present."
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: lint-and-validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
