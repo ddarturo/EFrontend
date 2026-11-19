@@ -3,10 +3,14 @@
  * Interfaz Gráfica para Evidenciar el Consumo de la API REST de Productos
  */
 
-// Permite configurar la URL base mediante parámetro de consulta (?api=...), localStorage o el puerto 5050 por defecto
-const API_BASE_URL = new URLSearchParams(window.location.search).get('api') || 
-                     localStorage.getItem('API_BASE_URL') || 
-                     'http://localhost:5050/api/v1';
+// Configura dinámicamente la URL base: si está en GitHub Pages usa Render, si está en local usa localhost:5050
+const defaultApi = (typeof window !== 'undefined' && window.location.hostname.includes('github.io'))
+  ? 'https://ebackend-api.onrender.com/api/v1'
+  : 'http://localhost:5050/api/v1';
+
+const API_BASE_URL = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('api')) || 
+                     (typeof window !== 'undefined' && localStorage.getItem('API_BASE_URL')) || 
+                     defaultApi;
 
 // Estado global de la vista
 const state = {
