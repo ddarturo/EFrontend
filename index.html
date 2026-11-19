@@ -2,64 +2,170 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=capa3_frontend/">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EFrontend - Cargando Catálogo de Productos</title>
-  <script>
-    window.location.replace("capa3_frontend/");
-  </script>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #f8fafc;
-      color: #0f172a;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      text-align: center;
-      padding: 1.5rem;
-    }
-    .card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 2.5rem;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      max-width: 480px;
-    }
-    .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #2563eb;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 1.5rem;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    a {
-      color: #2563eb;
-      font-weight: 600;
-      text-decoration: none;
-    }
-    a:hover { text-decoration: underline; }
-  </style>
+  <title>Catálogo de Productos - Capa 3: Frontend</title>
+  <link rel="stylesheet" href="style.css?v=20261119">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 <body>
-  <div class="card">
-    <div class="spinner"></div>
-    <h2>Cargando Catálogo de Productos...</h2>
-    <p style="color: #64748b; margin-top: 0.5rem; margin-bottom: 1.5rem;">
-      Redireccionando a la interfaz de usuario en <code>capa3_frontend</code>.
-    </p>
-    <p>
-      Si no eres redirigido automáticamente, <a href="capa3_frontend/">haz clic aquí para entrar</a>.
-    </p>
-  </div>
+
+  <!-- 1. Encabezado principal -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <i class="bi bi-hdd-network-fill"></i>
+        <div>
+          <h1>Catálogo de Productos <span>(Capa 3: Frontend)</span></h1>
+          <p class="subtitle">Arquitectura N-Capas &bull; REST API en Node.js, Express, Prisma y PostgreSQL</p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+        <span class="badge" id="apiCurrentBadge" style="background: #059669; color: white; padding: 0.3rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">
+          Nube (Render)
+        </span>
+        <div class="status-pill" id="apiStatusPill">
+          <span class="dot"></span>
+          <span id="apiStatusText">Verificando API...</span>
+        </div>
+        <button id="btnSwitchApi" class="toggle-btn" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: white; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.8rem; cursor: pointer;" title="Cambiar entre Render y Localhost">
+          <i class="bi bi-arrow-repeat"></i> Cambiar API
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- 2. Panel de Evidencia de la Petición HTTP -->
+    <section class="api-monitor-card" aria-label="Monitor de la API">
+      <div class="monitor-header">
+        <span class="monitor-title"><i class="bi bi-activity"></i> Consola de la Petición HTTP en Tiempo Real</span>
+        <div class="view-toggles">
+          <button id="btnViewCards" class="toggle-btn active"><i class="bi bi-grid-fill"></i> Vista Gráfica</button>
+          <button id="btnViewJson" class="toggle-btn"><i class="bi bi-code-slash"></i> Ver JSON de la API</button>
+        </div>
+      </div>
+      
+      <div class="monitor-body">
+        <div class="monitor-metric">
+          <span class="metric-label">Método y Endpoint</span>
+          <span class="metric-value code-pill" id="metricEndpoint">GET /api/v1/productos</span>
+        </div>
+        <div class="monitor-metric">
+          <span class="metric-label">Código HTTP</span>
+          <span class="metric-value badge-status" id="metricStatus">---</span>
+        </div>
+        <div class="monitor-metric">
+          <span class="metric-label">Tiempo de Respuesta</span>
+          <span class="metric-value" id="metricTime">0 ms</span>
+        </div>
+        <div class="monitor-metric">
+          <span class="metric-label">Total en PostgreSQL</span>
+          <span class="metric-value" id="metricTotal">---</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Barra de Control (Búsqueda, Páginas y Crear) -->
+    <section class="controls-bar">
+      <div class="search-group">
+        <i class="bi bi-search"></i>
+        <input 
+          type="text" 
+          id="searchInput" 
+          placeholder="Buscar producto por nombre o descripción (Filtra en PostgreSQL)..." 
+          aria-label="Buscar productos"
+        >
+        <button id="clearSearchBtn" class="clear-btn" hidden><i class="bi bi-x-circle-fill"></i></button>
+      </div>
+
+      <div class="action-group">
+        <div class="limit-selector">
+          <label for="limitSelect">Mostrar:</label>
+          <select id="limitSelect">
+            <option value="8">8 por pág.</option>
+            <option value="12" selected>12 por pág.</option>
+            <option value="24">24 por pág.</option>
+            <option value="50">50 por pág.</option>
+          </select>
+        </div>
+
+        <button id="btnOpenCreate" class="btn-primary">
+          <i class="bi bi-plus-circle-fill"></i> Probar POST (Nuevo)
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. Contenedor de Vista JSON Crudo (Oculto por defecto) -->
+    <section id="jsonViewSection" class="json-section" hidden>
+      <div class="json-header">
+        <span><i class="bi bi-braces"></i> Respuesta JSON exacta recibida desde la API</span>
+        <button id="btnCopyJson" class="btn-copy"><i class="bi bi-clipboard"></i> Copiar JSON</button>
+      </div>
+      <pre><code id="jsonCodeOutput">Cargando datos de la API...</code></pre>
+    </section>
+
+    <!-- 5. Rejilla Visual Adaptativa de Productos (Se ajusta al tamaño de ventana) -->
+    <section id="cardsViewSection" class="cards-section">
+      <div class="products-grid" id="productsGrid">
+        <!-- Renderizado dinámico desde script.js -->
+      </div>
+    </section>
+
+    <!-- 6. Paginación Adaptativa -->
+    <nav class="pagination-wrapper" aria-label="Paginación de productos">
+      <div class="pagination-controls" id="paginationControls"></div>
+    </nav>
+
+  </main>
+
+  <!-- 7. Modal Simple para Probar Crear Producto (POST) -->
+  <dialog id="createModal" class="simple-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2><i class="bi bi-box-seam"></i> Crear Producto (Probar API POST)</h2>
+        <button class="close-modal-btn" onclick="document.getElementById('createModal').close()">&times;</button>
+      </div>
+      <form id="createProductForm" class="modal-form">
+        <p class="modal-desc">Al enviar este formulario se enviará un <code>POST /api/v1/productos</code> con payload JSON hacia el backend activo.</p>
+        
+        <div class="form-group">
+          <label for="newNombre">Nombre del Producto *</label>
+          <input type="text" id="newNombre" placeholder="Ej: Taladro Percutor Milwaukee 20V" required minlength="3">
+        </div>
+
+        <div class="form-group">
+          <label for="newDescripcion">Descripción Técnica *</label>
+          <textarea id="newDescripcion" rows="2" placeholder="Características del producto..." required minlength="10"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newPvp">PVP ($) *</label>
+            <input type="number" id="newPvp" step="0.01" min="0.01" placeholder="Ej: 145.50" required>
+          </div>
+          <div class="form-group">
+            <label for="newStock">Stock Disponible *</label>
+            <input type="number" id="newStock" min="0" placeholder="Ej: 25" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newImagen">URL de Imagen</label>
+          <input type="url" id="newImagen" value="https://images.unsplash.com/photo-1572981779307-38b8cabb2407?w=500&q=80" required>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="document.getElementById('createModal').close()">Cancelar</button>
+          <button type="submit" class="btn-primary"><i class="bi bi-send-fill"></i> Ejecutar POST</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- 8. Toast de Notificaciones -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js?v=20261119"></script>
 </body>
 </html>

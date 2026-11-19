@@ -3,14 +3,27 @@
  * Interfaz Gráfica para Evidenciar el Consumo de la API REST de Productos
  */
 
-// Configura dinámicamente la URL base: si está en GitHub Pages usa Render, si está en local usa localhost:5050
-const defaultApi = (typeof window !== 'undefined' && window.location.hostname.includes('github.io'))
-  ? 'https://ebackend-api.onrender.com/api/v1'
-  : 'http://localhost:5050/api/v1';
+const RENDER_API_URL = 'https://ebackend-api.onrender.com/api/v1';
+const LOCAL_API_URL = 'http://localhost:5050/api/v1';
 
-const API_BASE_URL = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('api')) || 
-                     (typeof window !== 'undefined' && localStorage.getItem('API_BASE_URL')) || 
-                     defaultApi;
+// Determinar la API inicial de forma robusta
+function getInitialApiUrl() {
+  if (typeof window === 'undefined') return RENDER_API_URL;
+  
+  const urlParam = new URLSearchParams(window.location.search).get('api');
+  if (urlParam) return urlParam;
+
+  const saved = localStorage.getItem('API_BASE_URL');
+  // Si estamos en GitHub Pages y en localStorage quedó un localhost viejo, descartarlo y forzar Render
+  if (window.location.hostname.includes('github.io')) {
+    if (saved && saved.startsWith('https://')) return saved;
+    return RENDER_API_URL;
+  }
+
+  return saved || LOCAL_API_URL;
+}
+
+let API_BASE_URL = getInitialApiUrl();
 
 // Estado global de la vista
 const state = {
@@ -26,6 +39,8 @@ const state = {
 const elements = {
   apiStatusPill: document.getElementById('apiStatusPill'),
   apiStatusText: document.getElementById('apiStatusText'),
+  apiCurrentBadge: document.getElementById('apiCurrentBadge'),
+  btnSwitchApi: document.getElementById('btnSwitchApi'),
   metricEndpoint: document.getElementById('metricEndpoint'),
   metricStatus: document.getElementById('metricStatus'),
   metricTime: document.getElementById('metricTime'),
@@ -46,6 +61,15 @@ const elements = {
   createProductForm: document.getElementById('createProductForm'),
   toast: document.getElementById('toast'),
 };
+
+// Actualizar indicador visual de API
+function updateApiBadge() {
+  const isRender = API_BASE_URL.includes('onrender.com');
+  if (elements.apiCurrentBadge) {
+    elements.apiCurrentBadge.textContent = isRender ? 'Nube (Render)' : 'Local (5050)';
+    elements.apiCurrentBadge.style.background = isRender ? '#059669' : '#d97706';
+  }
+}
 
 // Utilidad simple de escape HTML (Anti-XSS)
 const escapeHTML = (str) => {
@@ -68,11 +92,13 @@ function notify(msg) {
 
 // 1. COMPROBACIÓN DE SALUD DE LA API (GET /health)
 async function verifyApiHealth() {
+  updateApiBadge();
   try {
     const res = await fetch(`${API_BASE_URL}/health`);
     if (res.ok) {
       elements.apiStatusPill.className = 'status-pill online';
-      elements.apiStatusText.textContent = 'API Online (Puerto 5050)';
+      const isRender = API_BASE_URL.includes('onrender.com');
+      elements.apiStatusText.textContent = isRender ? 'API Render Online' : 'API Local Online (5050)';
     } else {
       throw new Error();
     }
@@ -92,7 +118,7 @@ async function fetchProducts() {
     queryParams.append('search', state.search.trim());
   }
 
-  const endpointText = `GET /api/v1/productos?${queryParams.toString()}`;
+  const endpointText = `GET ${API_BASE_URL}/productos?${queryParams.toString()}`;
   elements.metricEndpoint.textContent = endpointText;
   elements.productsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 3rem;">Consultando la API y PostgreSQL...</div>';
 
@@ -131,7 +157,13 @@ async function fetchProducts() {
       <div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--danger);">
         <i class="bi bi-exclamation-octagon" style="font-size: 2.5rem;"></i>
         <h3 style="margin-top: 0.5rem;">No se pudo consultar la API de productos</h3>
-        <p style="color: var(--text-muted);">${escapeHTML(err.message)}</p>
+        <p style="color: var(--text-muted); margin-top: 0.5rem;">Endpoint: <code>${escapeHTML(API_BASE_URL)}</code></p>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">${escapeHTML(err.message)}</p>
+        <div style="margin-top: 1rem;">
+          <button onclick="toggleApiSource()" class="btn-primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">
+            <i class="bi bi-arrow-repeat"></i> Cambiar servidor de API
+          </button>
+        </div>
       </div>
     `;
   }
@@ -158,16 +190,16 @@ function renderGrid(products) {
           src="${escapeHTML(item.urlimagen)}" 
           alt="${escapeHTML(item.nombre)}"
           loading="lazy"
-          onerror="this.src='https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?w=500&q=80'"
+          onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1504148455328-c376907d081c?w=500&q=80';"
         >
       </div>
-      <div class="item-body">
-        <h3 class="item-title">${escapeHTML(item.nombre)}</h3>
+      <div class="item-info">
+        <h3 class="item-title" title="${escapeHTML(item.nombre)}">${escapeHTML(item.nombre)}</h3>
         <p class="item-desc">${escapeHTML(item.descripcion)}</p>
         <div class="item-footer">
-          <span class="item-pvp">$${Number(item.pvp).toFixed(2)}</span>
-          <button class="btn-delete-card" onclick="deleteProduct(${item.id})" title="Probar DELETE /api/v1/productos/${item.id}">
-            <i class="bi bi-trash-fill"></i> DELETE
+          <span class="item-price">$${parseFloat(item.pvp).toFixed(2)}</span>
+          <button class="btn-delete" title="Eliminar producto (DELETE)" onclick="deleteProduct(${item.id})">
+            <i class="bi bi-trash3-fill"></i>
           </button>
         </div>
       </div>
@@ -176,41 +208,49 @@ function renderGrid(products) {
 }
 
 // 4. RENDERIZAR PAGINACIÓN
-function renderPagination({ currentPage, totalPages }) {
+function renderPagination(pagination) {
+  const { currentPage, totalPages, hasNextPage, hasPrevPage } = pagination;
   if (totalPages <= 1) {
     elements.paginationControls.innerHTML = '';
     return;
   }
 
-  // Ajuste según el ancho de la ventana
-  const isSmallScreen = window.innerWidth < 640;
-  const delta = isSmallScreen ? 1 : 2;
-
-  let start = Math.max(1, currentPage - delta);
-  let end = Math.min(totalPages, currentPage + delta);
-
   let html = `
-    <button class="p-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(1)" title="Primera página">
+    <button class="page-btn" ${!hasPrevPage ? 'disabled' : ''} onclick="goToPage(1)" title="Primera página">
       <i class="bi bi-chevron-double-left"></i>
     </button>
-    <button class="p-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})" title="Página anterior">
+    <button class="page-btn" ${!hasPrevPage ? 'disabled' : ''} onclick="goToPage(${currentPage - 1})" title="Anterior">
       <i class="bi bi-chevron-left"></i>
     </button>
   `;
 
-  for (let i = start; i <= end; i++) {
+  const windowSize = window.innerWidth < 640 ? 1 : 2;
+  const startPage = Math.max(1, currentPage - windowSize);
+  const endPage = Math.min(totalPages, currentPage + windowSize);
+
+  if (startPage > 1) {
+    html += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+    if (startPage > 2) html += `<span class="page-ellipsis">...</span>`;
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
     html += `
-      <button class="p-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">
+      <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">
         ${i}
       </button>
     `;
   }
 
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) html += `<span class="page-ellipsis">...</span>`;
+    html += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+  }
+
   html += `
-    <button class="p-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})" title="Página siguiente">
+    <button class="page-btn" ${!hasNextPage ? 'disabled' : ''} onclick="goToPage(${currentPage + 1})" title="Siguiente">
       <i class="bi bi-chevron-right"></i>
     </button>
-    <button class="p-btn" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${totalPages})" title="Última página (${totalPages})">
+    <button class="page-btn" ${!hasNextPage ? 'disabled' : ''} onclick="goToPage(${totalPages})" title="Última página">
       <i class="bi bi-chevron-double-right"></i>
     </button>
   `;
@@ -218,46 +258,24 @@ function renderPagination({ currentPage, totalPages }) {
   elements.paginationControls.innerHTML = html;
 }
 
-// 5. RENDERIZAR INSPECTOR JSON
+// 5. NAVEGAR A PÁGINA
+function goToPage(page) {
+  if (page < 1 || page > state.totalPages || page === state.page) return;
+  state.page = page;
+  fetchProducts();
+  window.scrollTo({ top: elements.cardsViewSection.offsetTop - 80, behavior: 'smooth' });
+}
+
+// 6. RENDERIZAR JSON CRUDO
 function renderRawJson(data) {
   elements.jsonCodeOutput.textContent = JSON.stringify(data, null, 2);
 }
 
-// Cambiar de página
-window.changePage = (p) => {
-  state.page = p;
-  fetchProducts();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-// 6. PROBAR ELIMINAR (DELETE /api/v1/productos/:id)
-window.deleteProduct = async (id) => {
-  if (!confirm(`¿Deseas probar la acción DELETE en el backend para el producto ID #${id}?`)) return;
-
-  const endpointText = `DELETE /api/v1/productos/${id}`;
-  elements.metricEndpoint.textContent = endpointText;
-
-  const startTime = performance.now();
-  try {
-    const res = await fetch(`${API_BASE_URL}/productos/${id}`, { method: 'DELETE' });
-    const duration = Math.round(performance.now() - startTime);
-
-    elements.metricStatus.textContent = `${res.status} No Content`;
-    elements.metricStatus.className = 'metric-value badge-status success';
-    elements.metricTime.textContent = `${duration} ms`;
-
-    notify(`✅ Producto #${id} eliminado con éxito (HTTP 204 No Content).`);
-    fetchProducts();
-  } catch (err) {
-    notify(`❌ Error al eliminar producto #${id}`);
-  }
-};
-
-// 7. PROBAR CREAR (POST /api/v1/productos)
+// 7. CREAR PRODUCTO (POST)
 elements.createProductForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const newProduct = {
+  const payload = {
     nombre: document.getElementById('newNombre').value.trim(),
     descripcion: document.getElementById('newDescripcion').value.trim(),
     pvp: parseFloat(document.getElementById('newPvp').value),
@@ -265,40 +283,66 @@ elements.createProductForm.addEventListener('submit', async (e) => {
     urlimagen: document.getElementById('newImagen').value.trim(),
   };
 
-  const endpointText = `POST /api/v1/productos`;
-  elements.metricEndpoint.textContent = endpointText;
-
-  const startTime = performance.now();
-
   try {
     const res = await fetch(`${API_BASE_URL}/productos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProduct),
+      body: JSON.stringify(payload),
     });
 
-    const duration = Math.round(performance.now() - startTime);
-    const data = await res.json();
+    const result = await res.json();
 
-    elements.metricStatus.textContent = `${res.status} Created`;
-    elements.metricStatus.className = 'metric-value badge-status success';
-    elements.metricTime.textContent = `${duration} ms`;
-
-    if (res.ok) {
-      notify(`🎉 Producto creado con éxito con nuevo ID: #${data.data.id} (HTTP 201 Created)`);
+    if (res.status === 201 && result.success) {
       elements.createModal.close();
       elements.createProductForm.reset();
+      notify(`✅ Producto #${result.data.id} creado con éxito.`);
       state.page = 1;
       fetchProducts();
     } else {
-      throw new Error(data.error?.message || 'Error de validación al crear');
+      throw new Error(result.error?.message || 'Error al crear producto');
     }
   } catch (err) {
-    notify(`❌ ${err.message}`);
+    alert(`Error: ${err.message}`);
   }
 });
 
-// 8. EVENTOS DE CONTROL (BÚSQUEDA Y LÍMITE)
+// 8. ELIMINAR PRODUCTO (DELETE)
+async function deleteProduct(id) {
+  if (!confirm(`¿Estás seguro de eliminar el producto #${id} de PostgreSQL?`)) return;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/productos/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (res.status === 204) {
+      notify(`🗑️ Producto #${id} eliminado correctamente.`);
+      fetchProducts();
+    } else {
+      const errData = await res.json();
+      throw new Error(errData.error?.message || 'Error al eliminar');
+    }
+  } catch (err) {
+    notify(`❌ Error: ${err.message}`);
+  }
+}
+
+// Alternar entre API Render y API Localhost
+function toggleApiSource() {
+  if (API_BASE_URL.includes('onrender.com')) {
+    API_BASE_URL = LOCAL_API_URL;
+  } else {
+    API_BASE_URL = RENDER_API_URL;
+  }
+  localStorage.setItem('API_BASE_URL', API_BASE_URL);
+  updateApiBadge();
+  state.page = 1;
+  notify(`Cambiado a: ${API_BASE_URL}`);
+  verifyApiHealth();
+  fetchProducts();
+}
+
+// 9. EVENTOS DE CONTROL (BÚSQUEDA Y LÍMITE)
 let searchTimer = null;
 elements.searchInput.addEventListener('input', (e) => {
   clearTimeout(searchTimer);
@@ -323,6 +367,11 @@ elements.limitSelect.addEventListener('change', (e) => {
   state.page = 1;
   fetchProducts();
 });
+
+// Botón para alternar API en navbar
+if (elements.btnSwitchApi) {
+  elements.btnSwitchApi.addEventListener('click', toggleApiSource);
+}
 
 // Pestañas: Alternar Vista Gráfica vs Vista JSON Crudo
 elements.btnViewCards.addEventListener('click', () => {
@@ -360,7 +409,7 @@ window.addEventListener('resize', () => {
   });
 });
 
-// 9. INICIALIZACIÓN
+// 10. INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', () => {
   verifyApiHealth();
   fetchProducts();
